@@ -1,0 +1,11 @@
+# CMSIS-DSP Placeholder
+# This directory will contain arm_math.h and related CMSIS-DSP headers
+# when the STM32CubeG4 firmware package is integrated.
+#
+# Required files:
+#   - arm_math.h
+#   - arm_common_tables.h
+#   - arm_const_structs.h
+#   - cmsis_compiler.h
+#
+# Source: https://github.com/ARM-software/CMSIS-DSP
