@@ -65,7 +65,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
 
     # --- NANOEDGE AI INTEGRATION ---
-    # Link the compiled static AI library and standard math library
+    # Comment out the two lines below when using MODE_DATA_LOGGER in main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/libneai.a
     m
     # Add user defined libraries

@@ -2,7 +2,7 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : DATA LOGGER — STM32 NUCLEO-G474RE
+  * @brief          : BLDC Motor Condition Monitoring — STM32 NUCLEO-G474RE
   *
   *  Hardware:
   *    • MCU:    STM32G474RET6 (Cortex-M4F, 170 MHz)
@@ -10,11 +10,12 @@
   *    • Motor:  12V/10A BLDC via SimonK 30A ESC
   *    • UART:   LPUART1 (PA2/PA3) → ST-Link VCP, 115200 baud
   *
-  *  Pipeline (Data Logger Mode):
-  *    TIM2 (5 kHz TRGO) → ADC1 (12-bit, PB0) → DMA1_CH1 (Circular, 256 samples)
-  *    → Print raw ADC values over UART for NanoEdge AI Studio data collection
+  *  Modes (toggle via MODE_SELECT define below):
+  *    MODE_CLASSIFICATION : 5-class NanoEdge AI inference → UART class output
+  *    MODE_DATA_LOGGER    : Raw ADC streaming → UART (for dataset collection)
   *
-  *  NanoEdge AI functions are COMMENTED OUT until the library is ready.
+  *  Pipeline:
+  *    TIM2 (5 kHz TRGO) → ADC1 (12-bit, PB0) → DMA1_CH1 (Circular, 256 samples)
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -23,9 +24,20 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "NanoEdgeAI.h"
 #include <stdio.h>
 #include <string.h>
+
+/* ══════════════════════════════════════════════════════════════════════
+ *  MODE SELECT — Change this define to switch firmware behaviour:
+ *    MODE_CLASSIFICATION  →  5-class NanoEdge AI inference (default)
+ *    MODE_DATA_LOGGER     →  Raw ADC value streaming for data collection
+ * ══════════════════════════════════════════════════════════════════════ */
+#define MODE_CLASSIFICATION
+// #define MODE_DATA_LOGGER
+
+#ifdef MODE_CLASSIFICATION
+  #include "NanoEdgeAI.h"
+#endif
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,14 +50,7 @@
 
 /* ── Sensor / ADC Constants ── */
 #define ADC_ZERO_POINT        3103U   /* ACS724 zero-current offset (2.5V on 3.3V/12-bit) */
-#define DMA_BUFFER_SIZE       256U    /* Must match NEAI_INPUT_SIGNAL_LENGTH */
-// #define LEARNING_ITERATIONS   70U     /* Number of learn() calls for baseline — disabled for data logger */
-
-/* ── State Machine States (disabled for data logger) ── */
-// #define STATE_IDLE            0U
-// #define STATE_LEARNING        1U
-// #define STATE_TRANSITION      2U
-// #define STATE_DETECTION       3U
+#define DMA_BUFFER_SIZE       256U    /* 256 samples per buffer (matches NEAI_INPUT_SIGNAL_LENGTH) */
 
 /* USER CODE END PD */
 
@@ -71,11 +76,17 @@ TIM_HandleTypeDef htim2;
  */
 static uint16_t adc_dma_buffer[DMA_BUFFER_SIZE];
 
+#ifdef MODE_CLASSIFICATION
 /**
- * @brief Float buffer for NanoEdge AI input — AC-coupled (zero-mean).
+ * @brief Float buffer for NanoEdge AI input.
  *        Size matches NEAI_INPUT_SIGNAL_LENGTH (256).
  */
 static float ai_input_buffer[DMA_BUFFER_SIZE];
+
+/* ── Classification variables ── */
+int id_class = 0;
+float probabilities[NEAI_NUMBER_OF_CLASSES];
+#endif
 
 /**
  * @brief Volatile flags set by DMA ISR, polled in main loop.
@@ -85,9 +96,6 @@ static float ai_input_buffer[DMA_BUFFER_SIZE];
 static volatile uint8_t dma_half_cplt = 0;
 static volatile uint8_t dma_full_cplt = 0;
 
-/* ── State machine variables ── */
-static uint16_t learn_count = 0;
-static uint8_t similarity_score = 0;
 
 /* USER CODE END PV */
 
@@ -98,8 +106,6 @@ static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
-// static void CastBuffer_And_Normalize(void);   /* Disabled — data logger sends raw values */
-// static uint8_t UART_GetChar(void);             /* Disabled — no state machine commands */
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -111,7 +117,6 @@ static void MX_TIM2_Init(void);
  *  Routes printf() output to LPUART1 (ST-Link Virtual COM Port).
  *  This overrides the weak _write() syscall used by newlib-nano.
  * ═══════════════════════════════════════════════════════════════════════════ */
-// extern UART_HandleTypeDef hlpuart1; // Not needed, using BSP handle!
 
 int _write(int file, char *ptr, int len)
 {
@@ -119,42 +124,6 @@ int _write(int file, char *ptr, int len)
     HAL_UART_Transmit(&hcom_uart[COM1], (uint8_t *)ptr, (uint16_t)len, HAL_MAX_DELAY);
     return len;
 }
-
-#if 0  /* ── Disabled for data logger mode ── */
-/* ═══════════════════════════════════════════════════════════════════════════
- *                    BUFFER CAST & NORMALIZATION
- *
- *  Converts the full 256-element uint16_t DMA buffer into a float buffer
- *  suitable for NanoEdge AI. Subtracts the 3103 zero-point offset so the
- *  AI receives an AC waveform centered at 0, not a DC-biased signal.
- *
- *  Physics: ACS724 outputs 2.5V at zero current. On a 3.3V / 12-bit ADC:
- *           2.5 / 3.3 × 4095 ≈ 3103 counts
- * ═══════════════════════════════════════════════════════════════════════════ */
-static void CastBuffer_And_Normalize(void)
-{
-    for (uint16_t i = 0; i < DMA_BUFFER_SIZE; i++)
-    {
-        ai_input_buffer[i] = (float)adc_dma_buffer[i] - (float)ADC_ZERO_POINT;
-    }
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
- *                       UART SINGLE-CHAR POLLING
- *
- *  Non-blocking check for a single byte on LPUART1.
- *  Returns the character if available, or 0 if nothing received.
- * ═══════════════════════════════════════════════════════════════════════════ */
-static uint8_t UART_GetChar(void)
-{
-    uint8_t ch = 0;
-    if (HAL_UART_Receive(&hcom_uart[COM1], &ch, 1, 10) == HAL_OK)
-    {
-        return ch;
-    }
-    return 0;
-}
-#endif  /* Disabled for data logger mode */
 
 /* USER CODE END 0 */
 
@@ -213,14 +182,14 @@ int main(void)
       Error_Handler();
   }
 
-  /* ── NanoEdge AI Engine ── */
-  enum neai_state neai_ret = neai_anomalydetection_init(false);
+#ifdef MODE_CLASSIFICATION
+  /* ── NanoEdge AI Engine (5-class classification) ── */
+  enum neai_state neai_ret = neai_classification_init();
   if (neai_ret != NEAI_OK)
   {
       Error_Handler();
   }
-
-  /* Banner REMOVED — NanoEdge AI Studio requires pure numeric output from byte zero */
+#endif
 
   /* ──────────────────────────────────────────────────────────────────────
    *  Start the TIM2→ADC→DMA acquisition pipeline.
@@ -234,26 +203,7 @@ int main(void)
   /* Start TIM2 — TRGO update events begin triggering ADC at 5 kHz */
   HAL_TIM_Base_Start(&htim2);
 
-  /* Status message REMOVED — NanoEdge AI Studio requires pure numeric output */
-
   /* USER CODE END 2 */
-
-  /* Initialize led */
-  BSP_LED_Init(LED_GREEN);
-
-  /* Initialize USER push-button, will be used to trigger an interrupt each time it's pressed.*/
-  BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
-
-  /* Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity */
-  BspCOMInit.BaudRate   = 115200;
-  BspCOMInit.WordLength = COM_WORDLENGTH_8B;
-  BspCOMInit.StopBits   = COM_STOPBITS_1;
-  BspCOMInit.Parity     = COM_PARITY_NONE;
-  BspCOMInit.HwFlowCtl  = COM_HWCONTROL_NONE;
-  if (BSP_COM_Init(COM1, &BspCOMInit) != BSP_ERROR_NONE)
-  {
-    Error_Handler();
-  }
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -266,33 +216,36 @@ int main(void)
         if (dma_full_cplt)
         {
             dma_full_cplt = 0;
-            HAL_ADC_Stop_DMA(&hadc1); // Pause sensor
+            HAL_ADC_Stop_DMA(&hadc1);   /* Pause DMA while we process */
 
-            // 1. Convert raw ADC data into floats for the AI
-            for (int i = 0; i < 256; i++) {
+#ifdef MODE_CLASSIFICATION
+            /* ── Classification path ── */
+            /* 1. Convert raw ADC data into floats */
+            for (int i = 0; i < DMA_BUFFER_SIZE; i++) {
                 ai_input_buffer[i] = (float)adc_dma_buffer[i];
             }
 
-            // 2. The AI State Machine
-            if (learn_count < 12) {
-                // Phase 1: Establish the Baseline
-                neai_anomalydetection_learn(ai_input_buffer);
-                learn_count++;
-                printf("AI Learning Phase... %d/12\r\n", learn_count);
-            }
-            else {
-                // Phase 2: Active Condition Monitoring
-                neai_anomalydetection_detect(ai_input_buffer, &similarity_score);
+            /* 2. Run 5-Class Classification */
+            neai_classification(ai_input_buffer, probabilities, &id_class);
 
-                // Print the AI's confidence score!
-                if (similarity_score > 80) {
-                    printf("Motor Status: NORMAL (%d%% match)\r\n", similarity_score);
-                } else {
-                    printf("!! ANOMALY DETECTED !! (%d%% match)\r\n", similarity_score);
-                }
+            /* 3. Print the result using the class name from the library */
+            const char *class_name = neai_get_class_name(id_class);
+            printf("State: %s (%.1f%% sure)\r\n",
+                   class_name ? class_name : "Unknown",
+                   probabilities[id_class] * 100.0f);
+#else
+            /* ── Data logger path ── */
+            /* Stream 256 raw ADC values as space-separated line for NanoEdge AI Studio */
+            for (int i = 0; i < DMA_BUFFER_SIZE; i++)
+            {
+                if (i < DMA_BUFFER_SIZE - 1)
+                    printf("%u ", (unsigned int)adc_dma_buffer[i]);
+                else
+                    printf("%u\r\n", (unsigned int)adc_dma_buffer[i]);
             }
+#endif
 
-            HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_dma_buffer, 256); // Resume sensor
+            HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_dma_buffer, DMA_BUFFER_SIZE);  /* Resume */
         }
 
   }
@@ -510,8 +463,8 @@ static void MX_GPIO_Init(void)
  *    • Half-Transfer (HT): elements [0..127] are stable, DMA fills [128..255]
  *    • Transfer-Complete (TC): elements [128..255] are stable, DMA refills [0..127]
  *
- *  For this pipeline we use the FULL buffer on TC, since NanoEdge AI expects
- *  256 contiguous samples. The HT callback is provided for future use
+ *  For this pipeline we use the FULL buffer on TC for processing (AI inference
+ *  or raw streaming). The HT callback is provided for future use
  *  (e.g., double-buffering or streaming partial results).
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -531,7 +484,7 @@ void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
 /**
  * @brief DMA Transfer Complete callback.
  *        Full 256-sample buffer is now complete.
- *        Sets flag — main loop will copy, normalize, and run AI.
+ *        Sets flag — main loop will process the buffer.
  *
  * @note  Timer is NOT stopped. DMA circular mode continuously overwrites
  *        the buffer. The main loop must process before the next TC fires,
