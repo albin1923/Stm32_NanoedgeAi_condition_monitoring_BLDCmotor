@@ -5,7 +5,7 @@
 
 ---
 
-## 📋 Overview
+##  Overview
 
 This project implements a **bare-metal edge AI condition monitoring system** for BLDC motors using an STM32G474RE microcontroller and STMicroelectronics' **NanoEdge AI Studio**.
 
@@ -13,15 +13,15 @@ An ACS724-50A Hall-effect current sensor captures the motor's current signature 
 
 ### Key Features
 
-- ⚡ **5 kHz deterministic sampling** — TIM2 TRGO → ADC1 → DMA, zero CPU overhead during acquisition
-- 🧠 **On-device AI inference** — NanoEdge AI library runs anomaly detection on Cortex-M4F
-- 📊 **Two-phase state machine** — 12-iteration learning phase → continuous detection mode
-- 🔌 **Plug-and-play** — raw data logging mode for NanoEdge AI Studio training
-- 🐍 **Python tooling** — serial data logger, feature extractor, and signal simulator
+-  **5 kHz deterministic sampling** — TIM2 TRGO → ADC1 → DMA, zero CPU overhead during acquisition
+-  **On-device AI inference** — NanoEdge AI library runs anomaly detection on Cortex-M4F
+-  **Two-phase state machine** — 12-iteration learning phase → continuous detection mode
+-  **Plug-and-play** — raw data logging mode for NanoEdge AI Studio training
+-  **Python tooling** — serial data logger, feature extractor, and signal simulator
 
 ---
 
-## 🏗️ Hardware
+##  Hardware
 
 | Component | Specification |
 |-----------|---------------|
@@ -44,7 +44,7 @@ Motor Phase ──→ Through ACS724 sense path
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 Condition_Monitoring/
@@ -138,7 +138,7 @@ else {
 
 ---
 
-## 🚀 Build & Flash
+##  Build & Flash
 
 ### Prerequisites
 
@@ -216,7 +216,7 @@ python tools/signal_simulator.py --mode faulty --samples 5000
 
 ---
 
-## 🧠 NanoEdge AI Studio Workflow
+##  NanoEdge AI Studio Workflow
 
 1. **Collect Data** — Flash the data logger firmware, capture healthy & faulty motor data
 2. **Import to Studio** — Load CSV files into NanoEdge AI Studio
@@ -234,7 +234,7 @@ neai_anomalydetection_detect(float *input, uint8_t *sim);  // Detect anomalies
 
 ---
 
-## 📊 ADC Configuration
+##  ADC Configuration
 
 | Parameter | Value |
 |-----------|-------|
@@ -256,13 +256,13 @@ f_sample = SYSCLK / (PSC + 1) / (ARR + 1)
 
 ---
 
-## 📜 License
+##  License
 
 This project uses the NanoEdge AI library under STMicroelectronics' license terms.  
 All other code is provided as-is for educational and prototyping purposes.
 
 ---
 
-## 👤 Author
+##  Author
 
 **Albin** — [github.com/albin1923](https://github.com/albin1923)
