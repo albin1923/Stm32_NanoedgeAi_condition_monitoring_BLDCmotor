@@ -224,6 +224,12 @@ python tools/signal_simulator.py --mode faulty --samples 5000
 4. **Export Library** — Download `libneai.a` + `NanoEdgeAI.h` for your target MCU
 5. **Deploy** — Drop files into `stm32cubemx/`, build, and flash
 
+   <img width="1600" height="1000" alt="WhatsApp Image 2026-06-18 at 10 37 13 AM" src="https://github.com/user-attachments/assets/d43aa7eb-5b1f-4d28-bbe8-968e37efc18b" />
+   <img width="1600" height="1000" alt="WhatsApp Image 2026-06-18 at 10 36 41 AM" src="https://github.com/user-attachments/assets/928f831f-bc66-4dcf-ad49-2c605630a913" />
+   <img width="1600" height="1000" alt="WhatsApp Image 2026-06-18 at 10 36 11 AM" src="https://github.com/user-attachments/assets/4e34bd4c-bbef-4250-928c-c73a1ebd948d" />
+   <img width="1600" height="1000" alt="WhatsApp Image 2026-06-15 at 4 18 41 PM" src="https://github.com/user-attachments/assets/025f637e-fdc5-4c88-a3ec-d986834fc799" />
+
+
 The exported library provides three core functions:
 
 ```c
