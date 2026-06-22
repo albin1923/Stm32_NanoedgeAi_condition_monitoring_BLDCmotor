@@ -214,6 +214,10 @@ python tools/signal_simulator.py --mode faulty --samples 5000
 ```
 
 ---
+<img width="1920" height="1200" alt="image" src="https://github.com/user-attachments/assets/6757fb6c-5ddc-4940-8c52-14b0bacc6773" />
+
+<img width="1920" height="1200" alt="image" src="https://github.com/user-attachments/assets/b2d3f105-5119-4f30-8255-441b9700b459" />
+
 
 ##  NanoEdge AI Studio Workflow
 
