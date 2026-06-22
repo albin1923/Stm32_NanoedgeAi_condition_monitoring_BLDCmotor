@@ -16,7 +16,6 @@ An ACS724-50A Hall-effect current sensor captures the motor's current signature 
 -  **5 kHz deterministic sampling** — TIM2 TRGO → ADC1 → DMA, zero CPU overhead during acquisition
 -  **On-device AI inference** — NanoEdge AI library runs anomaly detection on Cortex-M4F
 -  **Two-phase state machine** — 12-iteration learning phase → continuous detection mode
--  **Plug-and-play** — raw data logging mode for NanoEdge AI Studio training
 -  **Python tooling** — serial data logger, feature extractor, and signal simulator
 
 ---
