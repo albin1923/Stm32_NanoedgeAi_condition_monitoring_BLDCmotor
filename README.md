@@ -187,7 +187,7 @@ sudo screen /dev/ttyACM0 115200
 
 ---
 
-## 🐍 Python Tools
+##  Python Tools
 
 ### Data Logger (`tools/data_logger.py`)
 
