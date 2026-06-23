@@ -1,4 +1,4 @@
-# 🔧 STM32 NanoEdge AI — BLDC Motor Condition Monitoring
+#  STM32 NanoEdge AI — BLDC Motor Condition Monitoring
 
 > Real-time anomaly detection on a Nucleo-G474RE using edge AI.  
 > Learns normal motor behavior in 12 iterations, then actively monitors for faults — all on-device, no cloud required.
